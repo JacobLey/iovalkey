@@ -145,12 +145,17 @@ export function executeWithAutoPipelining(
   // If we have slot information, we can improve routing by grouping slots served by the same subset of nodes
   // Note that the first value in args may be a (possibly empty) array.
   // ioredis will only flatten one level of the array, in the Command constructor.
-  const prefix = client.options.keyPrefix || "";
-  const slotKey = client.isCluster
-    ? client.slots[
-        calculateSlot(`${prefix}${getFirstValueInFlattenedArray(args)}`)
-      ].join(",")
-    : "main";
+  let slotKey = "main";
+  if (client.isCluster) {
+    const prefix = client.options.keyPrefix || "";
+    const key = getFirstValueInFlattenedArray(args);
+    // Hash Buffer keys by their bytes, as Command#getSlot does; decoding
+    // them as UTF-8 can change the slot (ported from redis/ioredis#2208).
+    const slot = Buffer.isBuffer(key)
+      ? calculateSlot(Buffer.concat([Buffer.from(prefix), key]))
+      : calculateSlot(`${prefix}${key}`);
+    slotKey = client.slots[slot].join(",");
+  }
 
   if (!client._autoPipelines.has(slotKey)) {
     const pipeline = client.pipeline();
