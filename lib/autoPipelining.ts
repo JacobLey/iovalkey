@@ -111,6 +111,10 @@ export function getFirstValueInFlattenedArray(
   return undefined;
 }
 
+function toBytes(value: string | Buffer | number | null | undefined): Buffer {
+  return Buffer.isBuffer(value) ? value : Buffer.from(String(value));
+}
+
 export function executeWithAutoPipelining(
   client,
   functionName: string,
@@ -149,11 +153,13 @@ export function executeWithAutoPipelining(
   if (client.isCluster) {
     const prefix = client.options.keyPrefix || "";
     const key = getFirstValueInFlattenedArray(args);
-    // Hash Buffer keys by their bytes, as Command#getSlot does; decoding
-    // them as UTF-8 can change the slot (ported from redis/ioredis#2208).
-    const slot = Buffer.isBuffer(key)
-      ? calculateSlot(Buffer.concat([Buffer.from(prefix), key]))
-      : calculateSlot(`${prefix}${key}`);
+    // Hash Buffer keys and prefixes by their bytes, as Command#getSlot does;
+    // decoding them as UTF-8 can change the slot (ported from
+    // redis/ioredis#2208 and redis/ioredis#2243).
+    const slot =
+      Buffer.isBuffer(key) || Buffer.isBuffer(prefix)
+        ? calculateSlot(Buffer.concat([toBytes(prefix), toBytes(key)]))
+        : calculateSlot(`${prefix}${key}`);
     slotKey = client.slots[slot].join(",");
   }
 
